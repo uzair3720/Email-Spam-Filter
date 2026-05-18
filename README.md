@@ -1,206 +1,286 @@
-![Screenshot 2024-08-06 202809](https://github.com/user-attachments/assets/8d3ae015-a086-4b1e-9235-d9e58b7be258)
-
 # Spam Filter AI
 
-Spam Filter AI is a Python application designed to classify emails as spam or non-spam using machine learning techniques. By utilizing Natural Language Processing (NLP) and Naive Bayes classification, this tool helps maintain an organized and spam-free inbox.
+**Spam Filter AI** is a desktop application that classifies an email as **spam** or **ham** (legitimate mail). You paste an email's text into a graphical window, click a button, and the app tells you whether it is spam — along with a confidence percentage.
 
-## 🚀 Project Overview
+Behind the window is a machine-learning model trained on roughly **86,000 real emails**. The project ships with the trained model already included, so you can run the app immediately without training anything yourself.
 
-Spam Filter AI employs advanced machine learning methods to process and analyze email content, categorizing it as spam or non-spam. Key components include:
+---
 
-- **Natural Language Processing (NLP)**: For analy!
-zing and understanding text.
-- **Naive Bayes Classification**: For spam detection.
-- **TF-IDF Vectorization**: To convert text into numerical features.
+## Table of Contents
 
-### Key Features
+1. [What the project does](#what-the-project-does)
+2. [How it works (the pipeline)](#how-it-works-the-pipeline)
+3. [Project structure](#project-structure)
+4. [Requirements](#requirements)
+5. [Clone and run — Windows](#clone-and-run--windows)
+6. [Clone and run — Linux](#clone-and-run--linux)
+7. [Clone and run — macOS](#clone-and-run--macos)
+8. [Using the application](#using-the-application)
+9. [Retraining the model from scratch (optional)](#retraining-the-model-from-scratch-optional)
+10. [Troubleshooting](#troubleshooting)
+11. [License](#license)
 
-- **Direct Email Pasting**: Users can paste email content directly into the application.
-- **Real-Time Classification**: Provides instant classification of email content.
-- **Modern GUI**: Intuitive interface for ease of use.
-- **Cross-Platform Compatibility**: Works on Windows, macOS, and Linux.
+---
 
-## 🛠️ Technologies Used
+## What the project does
 
-- **Python**: Main programming language.
-- **scikit-learn**: For machine learning algorithms and preprocessing.
-- **tkinter**: For creating the graphical user interface.
-- **pandas**: For data manipulation and analysis.
-- **NLTK**: For text processing and NLP.
+The application answers one question: **"Is this email spam?"**
 
-## 📂 Project Structure
+- It provides a dark-themed desktop window (built with Python's built-in `tkinter` toolkit).
+- You paste the full text of an email into a text box.
+- When you click **Check Email**, the app runs the text through a trained classifier.
+- It displays one of two results:
+  - 🚫 **SPAM DETECTED** (red)
+  - ✅ **Looks legitimate** (green)
+- It also shows the **spam probability** and **ham probability** as percentages, plus a colored progress bar.
 
-Here's the structure of the project directory:
+The whole thing runs **100% offline on your computer**. No internet connection, email account, or API key is required.
+
+---
+
+## How it works (the pipeline)
+
+The system has two phases: **training** (done once, already done for you) and **prediction** (what happens every time you click "Check Email").
+
+### 1. Building the dataset (`src/sample_enron.py`, `src/build_dataset.py`)
+
+The training data is assembled from two public sources:
+
+- **Enron email corpus** — a large set of real corporate emails, used as *ham* (legitimate mail).
+- **A Kaggle spam/ham CSV** (`combined_data.csv`) — used for both *spam* and additional *ham*.
+
+`sample_enron.py` randomly samples 50,000 emails from the raw Enron dump, extracts the subject line and body, and labels them `ham`.
+
+`build_dataset.py` then combines:
+- ~43,000 spam emails from Kaggle,
+- ~23,000 ham emails from the Enron sample,
+- ~20,000 ham emails from Kaggle,
+
+removes duplicates, shuffles the rows, and writes a single balanced file: `data/emails_large.csv` (≈86,000 rows with columns `text` and `label`).
+
+### 2. Training the model (`src/train_large.py`)
+
+`train_large.py` is the script that produced the model shipped in this repository. It:
+
+1. **Cleans** every email's text — lowercases it, strips HTML tags, replaces URLs with the token `url`, replaces numbers with the token `num`, and removes punctuation.
+2. **Splits** the data into 80% training / 20% testing.
+3. **Vectorizes** the text with **TF-IDF** (`TfidfVectorizer`): up to 50,000 features, unigrams + bigrams, English stop-words removed. This turns each email into a numerical vector that a model can learn from.
+4. **Trains** a **Logistic Regression** classifier on the training vectors.
+5. **Evaluates** it on the test set, printing a precision/recall/F1 report and a confusion matrix.
+6. **Saves** two files with `joblib`:
+   - `spam_detector_model.pkl` — the trained Logistic Regression model.
+   - `tfidf_vectorizer.pkl` — the fitted TF-IDF vectorizer.
+
+### 3. Making a prediction (`src/gui.py`)
+
+When you run the app, `gui.py`:
+
+1. Loads `spam_detector_model.pkl` and `tfidf_vectorizer.pkl` from the project root.
+2. Takes the email text you paste in.
+3. Cleans it using **exactly the same cleaning function** as `train_large.py` (this consistency is essential — the model only understands text processed the same way it was trained).
+4. Transforms the cleaned text with the loaded TF-IDF vectorizer.
+5. Asks the model to predict `spam` or `ham`, and reads the probability of each class.
+6. Renders the result in the window.
+
+> **Note on the older files:** `data_preprocessing.py`, `feature_extraction.py`, `model.py`, and `evaluation.py` are from an earlier version of the project that used a **Naive Bayes** classifier. They are kept for reference. The model the GUI actually uses is the **Logistic Regression** model produced by `train_large.py`.
+
+---
+
+## Project structure
 
 ```
 Spam-Filter-AI/
-├── data/
-│   ├── email.csv
-│   ├── emails.csv
-│   ├── preprocessed_emails.csv
+├── data/                       # Datasets (NOT included in the repo — see notes below)
+│   ├── emails.csv              #   raw Enron dump (input to sample_enron.py)
+│   ├── combined_data.csv       #   Kaggle spam/ham CSV
+│   ├── enron_ham_50k.csv       #   generated by sample_enron.py
+│   └── emails_large.csv        #   generated by build_dataset.py — the training set
 ├── src/
-│   ├── __pycache__/
 │   ├── __init__.py
-│   ├── data_preprocessing.py
-│   ├── evaluation.py
-│   ├── feature_extraction.py
-│   ├── gui.py
-│   ├── model.py
-├── venv/
-│   ├── Include/
-│   ├── Lib/
-│   ├── Scripts/
-│   ├── pyvenv.cfg
-├── .gitignore
-├── LICENSE
-├── README.md
-├── requirements.txt
-├── spam_detector_model.pkl
-├── tfidf_vectorizer.pkl
-├── X_features.pkl
-├── X_test.pkl
-├── y_test.pkl
+│   ├── sample_enron.py         # Step 1a: sample ham emails from the Enron dump
+│   ├── build_dataset.py        # Step 1b: build the balanced ~86k training set
+│   ├── train_large.py          # Step 2: train + save the Logistic Regression model
+│   ├── gui.py                  # The desktop application (run this)
+│   ├── data_preprocessing.py   # Legacy (old Naive Bayes pipeline)
+│   ├── feature_extraction.py   # Legacy (old Naive Bayes pipeline)
+│   ├── model.py                # Legacy (old Naive Bayes pipeline)
+│   └── evaluation.py           # Legacy (old Naive Bayes pipeline)
+├── spam_detector_model.pkl     # Pre-trained model  (included — ready to use)
+├── tfidf_vectorizer.pkl        # Pre-trained vectorizer (included — ready to use)
+├── requirements.txt            # Python dependencies
+├── LICENSE                     # GNU GPL v3.0
+└── README.md
 ```
 
-### **Data Directory**
+> **About the `data/` folder:** the CSV datasets are large (hundreds of MB to >1 GB) and are excluded from version control via `.gitignore`. You **do not need them to run the app** — the pre-trained `.pkl` files are all the GUI requires. You only need the datasets if you want to retrain the model yourself (see [Retraining](#retraining-the-model-from-scratch-optional)).
 
-- **`data/`**: This directory is used for storing datasets.
-  - `email.csv`: Contains raw email data for processing.
-  - `emails.csv`: A dataset used for training and testing the model.
-  - `preprocessed_emails.csv`: Contains emails that have been preprocessed for model training.
+---
 
-### **Source Code Directory**
+## Requirements
 
-- **`src/`**: Contains all the source code files.
-  - `data_preprocessing.py`: Handles the preprocessing of raw email data.
-  - `evaluation.py`: Evaluates the performance of the model.
-  - `feature_extraction.py`: Extracts features from email content for model training.
-  - `gui.py`: Manages the graphical user interface.
-  - `model.py`: Contains code for model training and prediction.
+- **Python 3.8 or newer** — <https://www.python.org/downloads/>
+- **Git** (to clone the repo) — <https://git-scm.com/downloads>
+- **Tkinter** — the GUI toolkit. It is bundled with Python on Windows and macOS. On most Linux distributions it must be installed separately (see the Linux section).
 
-## 📥 Installation Guide
+Python packages (installed via `requirements.txt`):
 
-### Prerequisites
+| Package        | Used for                                            |
+|----------------|-----------------------------------------------------|
+| `scikit-learn` | TF-IDF vectorizer + Logistic Regression model       |
+| `pandas`       | Reading CSV datasets                                |
+| `numpy`        | Numerical arrays (dependency of the above)          |
+| `nltk`         | Text processing (used by the legacy pipeline)       |
+| `joblib`       | Loading/saving the `.pkl` model files               |
 
-- **Python**: Version 3.7 or higher. Download from the [official Python website](https://www.python.org/downloads/).
-- **Git**: For cloning the repository. Download from the [official Git website](https://git-scm.com/downloads).
+`joblib` ships as a dependency of `scikit-learn`, so it is installed automatically.
 
-### Setup Instructions
+---
 
-1. **Clone the Repository**
+## Clone and run — Windows
 
+Open **Command Prompt** or **PowerShell** and run:
+
+```bat
+:: 1. Clone the repository
+git clone https://github.com/sd338/spam-filter-ai.git
+cd spam-filter-ai
+
+:: 2. Create a virtual environment
+python -m venv venv
+
+:: 3. Activate it
+venv\Scripts\activate
+
+:: 4. Install the dependencies
+pip install -r requirements.txt
+
+:: 5. Run the application
+python src\gui.py
+```
+
+A desktop window titled **"Spam Filter AI"** will open. Tkinter is included with the standard Python installer for Windows, so no extra steps are needed.
+
+---
+
+## Clone and run — Linux
+
+Tkinter is **not** included with Python on most Linux distributions and must be installed first.
+
+**Debian / Ubuntu / Linux Mint:**
+```bash
+sudo apt update
+sudo apt install python3 python3-venv python3-pip python3-tk git
+```
+
+**Fedora:**
+```bash
+sudo dnf install python3 python3-venv python3-pip python3-tkinter git
+```
+
+**Arch / Manjaro:**
+```bash
+sudo pacman -S python python-pip tk git
+```
+
+Then clone and run:
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/sd338/spam-filter-ai.git
+cd spam-filter-ai
+
+# 2. Create and activate a virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# 3. Install the dependencies
+pip install -r requirements.txt
+
+# 4. Run the application
+python3 src/gui.py
+```
+
+---
+
+## Clone and run — macOS
+
+Tkinter is included with the official Python installer from python.org. If you use Homebrew Python, install the Tk add-on with `brew install python-tk`.
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/sd338/spam-filter-ai.git
+cd spam-filter-ai
+
+# 2. Create and activate a virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# 3. Install the dependencies
+pip install -r requirements.txt
+
+# 4. Run the application
+python3 src/gui.py
+```
+
+---
+
+## Using the application
+
+1. **Launch** the app with the run command for your OS (above). A window opens.
+2. **Paste an email** — copy the full text of any email and paste it into the large text box.
+3. Click **Check Email**. The result appears below:
+   - 🚫 **SPAM DETECTED** in red, or
+   - ✅ **Looks legitimate** in green.
+   - The line underneath shows the **spam probability** and **ham probability**, and the bar fills proportionally.
+4. Click **Clear** to empty the text box and reset the result.
+
+If you click **Check Email** with an empty box, the app shows a warning popup.
+
+> Every time you start the app, make sure the virtual environment is activated first (`venv\Scripts\activate` on Windows, `source venv/bin/activate` on Linux/macOS).
+
+---
+
+## Retraining the model from scratch (optional)
+
+You only need this if you want to rebuild the model with your own data. The repository already includes a working pre-trained model, so this step is **not required** to use the app.
+
+1. **Obtain the datasets** and place them in the `data/` folder:
+   - The raw Enron email corpus as `data/emails.csv` (columns include `message`).
+   - A Kaggle spam/ham CSV as `data/combined_data.csv` (columns `text`, `label`, where `label` is `1` for spam and `0` for ham).
+2. **Sample ham from Enron:**
    ```bash
-   git clone https://github.com/sd338/spam-filter-ai.git
+   python src/sample_enron.py
    ```
-
-2. **Navigate to the Project Directory**
-
+   → produces `data/enron_ham_50k.csv`.
+3. **Build the balanced training set:**
    ```bash
-   cd spam-filter-ai
+   python src/build_dataset.py
    ```
-
-3. **Create and Activate a Virtual Environment**
-
-   - **Windows**:
-     ```bash
-     python -m venv venv
-     .\venv\Scripts\activate
-     ```
-
-   - **macOS/Linux**:
-     ```bash
-     python3 -m venv venv
-     source venv/bin/activate
-     ```
-
-4. **Install Required Packages**
-
+   → produces `data/emails_large.csv`.
+4. **Train the model:**
    ```bash
-   pip install -r requirements.txt
+   python src/train_large.py
    ```
+   → prints an evaluation report and overwrites `spam_detector_model.pkl` and `tfidf_vectorizer.pkl`.
 
-## 📈 Usage Instructions
+> The paths inside `sample_enron.py`, `build_dataset.py`, and `train_large.py` are currently **absolute** (hard-coded to `/home/uzair/Desktop/Spam-Filter-AI/...`). If you retrain on a different machine, edit the path constants at the top of each script to match your own location.
 
-### Running the Application
+---
 
-- **Windows**:
-  ```bash
-  python src/gui.py
-  ```
+## Troubleshooting
 
-- **macOS/Linux**:
-  ```bash
-  python3 src/gui.py
-  ```
+| Problem | Fix |
+|---------|-----|
+| `ModuleNotFoundError: No module named 'tkinter'` | Install Tkinter — on Linux use the `python3-tk` / `python3-tkinter` / `tk` package for your distro (see the Linux section). |
+| `FileNotFoundError` for `spam_detector_model.pkl` or `tfidf_vectorizer.pkl` | Run the app from the project root, and make sure both `.pkl` files are present in the top-level folder. |
+| `ModuleNotFoundError` for `pandas`, `sklearn`, etc. | The virtual environment is not activated, or dependencies are not installed. Activate `venv` and run `pip install -r requirements.txt`. |
+| `python` is not recognized (Windows) | Use `py` instead of `python`, or reinstall Python with the "Add Python to PATH" option checked. |
+| The window does not appear over SSH / a headless server | The GUI needs a graphical display. Run it on a machine with a desktop environment. |
 
-### How to Use
+---
 
-1. **Paste Email Content**: Copy and paste email content into the text area in the GUI.
-2. **Submit Email**: Click "Submit Email" to classify the content.
-3. **Delete Mail**: Click "Delete Mail" to clear the text area.
+## License
 
-### Data Files
+This project is licensed under the **GNU General Public License v3.0**. See the [LICENSE](LICENSE) file for the full text.
 
-- Place your raw email data files (e.g., `email.csv`, `emails.csv`) in the `data/` directory.
-- The preprocessed data file (`preprocessed_emails.csv`) should also be placed in the `data/` directory after preprocessing.
-
-## 📊 Data
-
-Datasets are sourced from Kaggle. To obtain:
-
-1. **Visit Kaggle**: Go to [Kaggle Datasets](https://www.kaggle.com/datasets).
-2. **Search for Spam Datasets**: Use keywords like "spam email dataset."
-3. **Download and Place in `data/` Directory**: Save the datasets here.
-
-**Example Datasets:**
-- [Spam Collection Dataset](https://www.kaggle.com/datasets)
-- [Spam Emails Dataset](https://www.kaggle.com/datasets)
-
-## 🤝 Contributing
-
-Contributions are welcome! Here’s how to contribute:
-
-1. **Fork the Repository**: Click "Fork" on GitHub.
-2. **Clone Your Fork**:
-   ```bash
-   git clone https://github.com/your-username/spam-filter-ai.git
-   ```
-3. **Create a New Branch**:
-   ```bash
-   git checkout -b feature-or-bugfix-name
-   ```
-4. **Make Changes**: Implement your features or fixes.
-5. **Commit and Push**:
-   ```bash
-   git add .
-   git commit -m "Description of changes"
-   git push origin feature-or-bugfix-name
-   ```
-6. **Submit a Pull Request**: Open a pull request on GitHub.
-
-## 📝 License
-
-This project is licensed under the GNU General Public License v3.0. The GPL-3.0 is a strong copyleft license that requires you to make the source code of the project available if you distribute or modify the software. For more details, visit the [GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.html) page.
-
-### Permissions
-- **Commercial Use**: Allowed
-- **Modification**: Allowed
-- **Distribution**: Allowed
-- **Patent Use**: Allowed
-- **Private Use**: Allowed
-
-### Limitations
-- **Liability**: No warranty is provided.
-- **Warranty**: The software is provided "as-is."
-
-### Conditions
-- **License and Copyright Notice**: Must be included in all copies and substantial portions of the software.
-- **State Changes**: Modified versions must also be licensed under GPL-3.0.
-- **Disclose Source**: Source code must be made available when distributing binaries or modified versions.
-- **Same License**: Modified versions must be distributed under GPL-3.0.
-
-## 📧 Contact
-
-For questions or support, please reach out via the contact methods on my [GitHub profile](https://github.com/sd338). Note that the email address provided in the GUI (`support@spamfilterai.com`) is fictional and used for demonstration purposes only.
-
-
+You may use, modify, and distribute this software, including commercially, provided that derivative works are also released under GPL-3.0 and the source code is made available. The software is provided "as-is", without warranty of any kind.
