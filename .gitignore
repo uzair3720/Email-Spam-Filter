@@ -1,4 +1,13 @@
-# Ignore Python bytecode files
+venv/
+env/
+__pycache__/
+*.pyc
+*.db
+*.sqlite
+*.pt
+*.pth
+data/
+data/# Ignore Python bytecode files
 *.pyc
 *.pyo
 *.pyd

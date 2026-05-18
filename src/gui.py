@@ -1,88 +1,164 @@
-import sys
 import os
+import re
 import tkinter as tk
-from tkinter import messagebox
-import joblib  # Correct import for joblib
+from tkinter import ttk, messagebox
+import joblib
 
-# Add the parent directory to the system path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+MODEL_PATH = os.path.join(ROOT, "spam_detector_model.pkl")
+VECT_PATH  = os.path.join(ROOT, "tfidf_vectorizer.pkl")
 
-# Import the preprocess_text function from data_preprocessing
-from src.data_preprocessing import preprocess_text
+
+def clean(text):
+    """Must match the cleaning used in train_large.py exactly."""
+    text = str(text).lower()
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"http\S+|www\.\S+", " url ", text)
+    text = re.sub(r"\d+", " num ", text)
+    text = re.sub(r"[^a-z\s]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+# Theme
+BG       = "#0F172A"
+PANEL    = "#1E293B"
+ACCENT   = "#3B82F6"
+ACCENT_H = "#2563EB"
+DANGER   = "#EF4444"
+DANGER_H = "#DC2626"
+TEXT     = "#E2E8F0"
+MUTED    = "#94A3B8"
+OK       = "#22C55E"
+WARN     = "#F59E0B"
+
 
 class SpamFilterAIApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Spam Filter AI")
-        self.root.geometry("600x500")
-        self.root.configure(bg='#F2F2F2')
+        self.root.geometry("720x640")
+        self.root.configure(bg=BG)
+        self.root.minsize(600, 560)
+
+        self.model = joblib.load(MODEL_PATH)
+        self.vectorizer = joblib.load(VECT_PATH)
 
         # Header
-        header = tk.Frame(self.root, bg='#4A90E2', pady=10)
-        header.pack(fill='x')
-        title = tk.Label(header, text="Spam Filter AI", font=("Roboto", 24, "bold"), fg='#FFFFFF', bg='#4A90E2')
-        title.pack()
+        header = tk.Frame(root, bg=BG, pady=20)
+        header.pack(fill="x", padx=24)
+        tk.Label(header, text="Spam Filter AI",
+                 font=("Helvetica", 26, "bold"), fg=TEXT, bg=BG).pack(anchor="w")
+        tk.Label(header, text="Paste any email below and check whether it's spam.",
+                 font=("Helvetica", 11), fg=MUTED, bg=BG).pack(anchor="w", pady=(4, 0))
 
-        # Main content area
-        content = tk.Frame(self.root, bg='#F2F2F2', padx=20, pady=20)
-        content.pack(fill='both', expand=True)
+        # Input panel
+        panel = tk.Frame(root, bg=PANEL, padx=16, pady=16,
+                         highlightthickness=1, highlightbackground="#334155")
+        panel.pack(fill="both", expand=True, padx=24, pady=(0, 16))
 
-        # Instructions
-        instructions = tk.Label(content, text="Paste the email content below:", font=("Roboto", 12), bg='#F2F2F2', fg='#333333')
-        instructions.pack(pady=10)
+        tk.Label(panel, text="Email content",
+                 font=("Helvetica", 11, "bold"), fg=MUTED, bg=PANEL).pack(anchor="w")
 
-        # Email Content Text Area
-        self.email_text = tk.Text(content, height=10, width=70, wrap='word', bg='#FFFFFF', fg='#333333', font=("Roboto", 12))
-        self.email_text.pack(pady=10)
+        self.email_text = tk.Text(
+            panel, height=14, wrap="word",
+            bg="#0B1220", fg=TEXT, insertbackground=TEXT,
+            font=("Consolas", 11), relief="flat", padx=12, pady=10,
+        )
+        self.email_text.pack(fill="both", expand=True, pady=(8, 0))
 
-        # Buttons Frame
-        button_frame = tk.Frame(content, bg='#F2F2F2')
-        button_frame.pack(pady=10)
+        # Buttons
+        button_row = tk.Frame(root, bg=BG)
+        button_row.pack(fill="x", padx=24)
 
-        # Submit Button
-        self.submit_button = tk.Button(button_frame, text="Submit Email", command=self.process_email, font=("Roboto", 14), bg='#50E3C2', fg='#FFFFFF', relief='flat', padx=10, pady=5)
-        self.submit_button.grid(row=0, column=0, padx=10)
+        self.submit_btn = self._button(button_row, "Check Email",
+                                       self.process_email, ACCENT, ACCENT_H)
+        self.submit_btn.pack(side="left")
 
-        # Delete Mail Button
-        self.delete_button = tk.Button(button_frame, text="Delete Mail", command=self.delete_mail, font=("Roboto", 14), bg='#E94E77', fg='#FFFFFF', relief='flat', padx=10, pady=5)
-        self.delete_button.grid(row=0, column=1, padx=10)
+        self.clear_btn = self._button(button_row, "Clear",
+                                      self.delete_mail, DANGER, DANGER_H)
+        self.clear_btn.pack(side="left", padx=(10, 0))
 
-        # Status Label
-        self.status_label = tk.Label(content, text="Paste an email and click Submit to check.", font=("Roboto", 12), bg='#F2F2F2', fg='#333333')
-        self.status_label.pack(pady=10)
+        # Result card
+        self.result_card = tk.Frame(root, bg=PANEL, padx=20, pady=18,
+                                    highlightthickness=1, highlightbackground="#334155")
+        self.result_card.pack(fill="x", padx=24, pady=(16, 8))
+
+        self.result_label = tk.Label(
+            self.result_card, text="Awaiting input",
+            font=("Helvetica", 16, "bold"), fg=TEXT, bg=PANEL,
+        )
+        self.result_label.pack(anchor="w")
+
+        self.confidence_label = tk.Label(
+            self.result_card, text="Paste an email and click Check.",
+            font=("Helvetica", 11), fg=MUTED, bg=PANEL,
+        )
+        self.confidence_label.pack(anchor="w", pady=(4, 8))
+
+        self.bar_bg = tk.Frame(self.result_card, bg="#0B1220", height=8)
+        self.bar_bg.pack(fill="x")
+        self.bar_fill = tk.Frame(self.bar_bg, bg=ACCENT, height=8, width=0)
+        self.bar_fill.place(x=0, y=0, relheight=1)
 
         # Footer
-        footer = tk.Frame(self.root, bg='#4A90E2', pady=10)
-        footer.pack(side='bottom', fill='x')
-        footer_text = tk.Label(footer, text="© 2024 Spam Filter AI | Contact: support@spamfilterai.com", font=("Roboto", 10), fg='#FFFFFF', bg='#4A90E2')
-        footer_text.pack()
+        tk.Label(root, text="© 2024 Spam Filter AI",
+                 font=("Helvetica", 9), fg=MUTED, bg=BG).pack(side="bottom", pady=8)
 
-        # Load the model and vectorizer
-        self.model = joblib.load('spam_detector_model.pkl')
-        self.vectorizer = joblib.load('tfidf_vectorizer.pkl')
+    def _button(self, parent, text, cmd, color, hover):
+        b = tk.Button(
+            parent, text=text, command=cmd,
+            font=("Helvetica", 12, "bold"), fg="#FFFFFF", bg=color,
+            activebackground=hover, activeforeground="#FFFFFF",
+            relief="flat", padx=18, pady=10, cursor="hand2", borderwidth=0,
+        )
+        b.bind("<Enter>", lambda e: b.config(bg=hover))
+        b.bind("<Leave>", lambda e: b.config(bg=color))
+        return b
 
     def process_email(self):
-        email_content = self.email_text.get("1.0", tk.END).strip()
-        if email_content:
-            preprocessed_content = preprocess_text(email_content)
-            features = self.vectorizer.transform([preprocessed_content])
-            prediction = self.model.predict(features)
+        content = self.email_text.get("1.0", tk.END).strip()
+        if not content:
+            messagebox.showwarning("Empty", "Please paste an email first.")
+            return
 
-            if prediction == 1:
-                result_text = "This email is SPAM."
-            else:
-                result_text = "This email is NOT spam."
+        features = self.vectorizer.transform([clean(content)])
+        label = self.model.predict(features)[0]
 
-            self.status_label.config(text=result_text)
+        # Probability if available
+        if hasattr(self.model, "predict_proba"):
+            proba = self.model.predict_proba(features)[0]
+            classes = list(self.model.classes_)
+            spam_p = float(proba[classes.index("spam")])
         else:
-            messagebox.showwarning("Empty Content", "Please paste an email into the text area before submitting.")
+            spam_p = 1.0 if label == "spam" else 0.0
+
+        self._render_result(label, spam_p)
+
+    def _render_result(self, label, spam_p):
+        if label == "spam":
+            self.result_label.config(text="🚫  SPAM DETECTED", fg=DANGER)
+            self.bar_fill.config(bg=DANGER)
+        else:
+            self.result_label.config(text="✅  Looks legitimate", fg=OK)
+            self.bar_fill.config(bg=OK)
+
+        pct = round(spam_p * 100, 1)
+        self.confidence_label.config(
+            text=f"Spam probability: {pct}%   ·   Ham probability: {round(100 - pct, 1)}%"
+        )
+        self.bar_bg.update_idletasks()
+        full_w = self.bar_bg.winfo_width()
+        self.bar_fill.place_configure(relwidth=spam_p)
 
     def delete_mail(self):
         self.email_text.delete("1.0", tk.END)
-        self.status_label.config(text="Paste an email and click Submit to check.")
+        self.result_label.config(text="Awaiting input", fg=TEXT)
+        self.confidence_label.config(text="Paste an email and click Check.")
+        self.bar_fill.place_configure(relwidth=0)
 
-# Main loop
+
 if __name__ == "__main__":
     root = tk.Tk()
-    app = SpamFilterAIApp(root)
+    SpamFilterAIApp(root)
     root.mainloop()
